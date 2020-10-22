@@ -6,26 +6,75 @@
 trigger:
 - master
 
-strategy:
-  matrix:
-    linux:
-      imageName: "ubuntu-16.04"
-    mac:
-      imageName: "macos-10.14"
-    windows:
-      imageName: "vs2017-win2016"
-  maxParallel: 3
-
 pool:
-  vmImage: $(imageName)
+  vmImage: 'ubuntu-18.04'
 
 variables:
   buildConfiguration: 'Release'
 
 steps:
+#Setup the environment - Install the software required
+- task: UseDotNet@2
+  inputs:
+    packageType: 'sdk'
+    version: '5.0.x'
+    includePreviewVersions: true
+    performMultiLevelLookup: true
+
+- task: UseDotNet@2
+  inputs:
+    packageType: 'runtime'
+    version: '3.0.x'
+    performMultiLevelLookup: true
+
+
+#Restore Dependencies
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'restore'
+    feedsToUse: 'select'
+    vstsFeed: '538d928e-0a8e-413a-8021-74890be8b0c3'
+  
+#Build
 - task: DotNetCoreCLI@2
   inputs:
     command: 'build'
     projects: '**/*.csproj'
     arguments: '--configuration $(buildConfiguration)'
   displayName: 'dotnet build $(buildConfiguration)'
+
+#Test
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'test'
+    projects: '**/*Tests/*.csproj'
+    arguments: '--configuration $(buildConfiguration)'
+    testRunTitle: 'Tests'
+
+#Code Coverage
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'test'
+    projects: '**/*Tests/*.csproj'
+    arguments: '--configuration $(buildConfiguration) --collect "Code coverage'
+
+#Packaging 
+#Publishi artifacts to Azure Pipelines
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'publish'
+    publishWebProjects: true
+    arguments: '--configuration $(BuildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+    zipAfterPublish: True
+#Publish artifacts
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'drop'
+
+#Publish to Nuget
+- task: NuGetCommand@2
+  inputs:
+    command: 'pack'
+    packagesToPack: '**/*.csproj'
+    versioningScheme: 'off'
